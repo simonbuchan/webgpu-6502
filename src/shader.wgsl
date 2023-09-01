@@ -14,24 +14,20 @@ const LAYER_COLORS = array<vec4f, 7>(
 );
 
 struct Attributes {
-    @builtin(vertex_index) index: u32,
-    @location(0) node: u32,
-    @location(1) layer: u32,
-    @location(2) position: vec2f,
+    @location(0) position: vec2u,
+    @location(1) nodeId_layer: vec2u,
 }
 
 struct VertexOutput {
     @builtin(position) position: vec4f,
-    @interpolate(flat)
-    @location(0) layer: u32,
+    @interpolate(flat) @location(0) layer: u32,
 }
 
 @vertex
 fn vs_poly(a: Attributes) -> VertexOutput {
     var out = VertexOutput();
-//    out.position = vec4f(a.position / CHIP_SIZE, 0.0, 1.0);
-    out.position = vec4f(a.position / CHIP_SIZE * 2.0 - 1.0, 0.0, 1.0);
-    out.layer = a.layer;
+    out.position = vec4f(vec2f(a.position) / CHIP_SIZE * 2.0 - 1.0, 0.0, 1.0);
+    out.layer = a.nodeId_layer.y;
     return out;
 }
 

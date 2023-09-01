@@ -1,16 +1,61 @@
 import fs from "node:fs";
+import zlib from "node:zlib";
 
 import * as poly2tri from "poly2tri";
 
 import segments from "./segments.js";
+import transistors from "./transistors.js";
 
 // segments is an array of polygons, each of which is an array of:
 //   [node, pull ("+" or "-"), layer, x0, y0, ...]
+// transistors is an array of logical transistors, each of which is an array of:
+//   [name, gate, c1, c2, bb, ??]
+// name is just `t${index}`, not actually used
+// bb is the bounding box, not currently needed
+// last value doesn't seem to be used, not sure what the format is.
+//
+// Create output data file, with structure:
+// {
+//   header: {
+//     instancesOffset: u32,
+//     verticesOffset: u32,
+//     indicesOffset: u32,
+//     transistorsOffset: u32,
+//   }
+//   polygons: {
+//     instances: array of {
+//       nodeId: u16,
+//       layer: u16,
+//       indexCount: u16,
+//       firstIndex: u32,
+//       baseVertex: u32,
+//     }
+//     vertices: array of { position: vec2<u16> }
+//     indices: array of { index: u16 }
+//   }
+//   transistors: array of { gate: u16, c1: u16, c2: u16 }
+// }
 
-const indirect = [];
-const instances = [];
-const vertices = [];
-const indices = [];
+const headerSize = 4 * 4;
+const instanceSize = 2 + 2 + 2 + 4 + 4 + 2;
+const coordSize = 2;
+const indexSize = 2;
+const transistorSize = 2 + 2 + 2;
+
+const instanceCount = segments.length;
+// not exact as we filter out some points
+const maxCoordCount = segments.reduce((acc, s) => acc + (s.length - 3), 0);
+// euler: number of triangles for a polygon is (number of points - 2)
+// so total number of indices is (total number of points - 2 * number of polygons) * 3
+const maxIndexCount = (maxCoordCount / 2 - 2 * instanceCount) * 3;
+
+let instanceOffset = 0;
+const instances = new DataView(new ArrayBuffer(instanceCount * instanceSize));
+let coordCount = 0;
+const vertices = new Uint16Array(maxCoordCount);
+let indexCount = 0;
+const indices = new Uint16Array(maxIndexCount);
+const transistorData = new Uint16Array(transistors.length);
 
 let degenerateCount = 0;
 
@@ -51,72 +96,62 @@ for (const [node, pull, layer, ...path] of segments) {
   ctx.triangulate();
   const triangles = ctx.getTriangles();
 
-  const instanceOffset = instances.length / 2;
-  instances.push(node, layer);
-
-  const vertexOffset = vertices.length / 2;
+  const baseVertex = coordCount / 2;
   for (const point of points) {
-    vertices.push(point.x, point.y);
+    vertices[coordCount++] = point.x;
+    vertices[coordCount++] = point.y;
   }
 
-  const indexOffset = indices.length;
+  const firstIndex = indexCount;
   for (const triangle of triangles) {
-    const i0 = points.indexOf(triangle.getPoint(0));
-    const i1 = points.indexOf(triangle.getPoint(1));
-    const i2 = points.indexOf(triangle.getPoint(2));
-    indices.push(i0, i1, i2);
+    indices[indexCount++] = points.indexOf(triangle.getPoint(0));
+    indices[indexCount++] = points.indexOf(triangle.getPoint(1));
+    indices[indexCount++] = points.indexOf(triangle.getPoint(2));
   }
 
-  // defined by WebGPU drawIndexedIndirect:
-  // indexCount, instanceCount, firstIndex, baseVertex, baseInstance
-  indirect.push(
-    indices.length - indexOffset,
-    1,
-    indexOffset,
-    vertexOffset,
-    instanceOffset,
-  );
+  instances.setUint16(instanceOffset, node, true);
+  instances.setUint16(instanceOffset + 2, layer, true);
+  instances.setUint16(instanceOffset + 4, indexCount - firstIndex, true);
+  instances.setUint32(instanceOffset + 6, firstIndex, true);
+  instances.setUint32(instanceOffset + 10, baseVertex, true);
+  instanceOffset += instanceSize;
 }
 
-console.log("polygons: " + instances.length);
-console.log("degenerateCount: " + degenerateCount);
+let transistorIndex = 0;
+for (const [name, gate, c1, c2] of transistors) {
+  transistorData[transistorIndex++] = gate;
+  transistorData[transistorIndex++] = c1;
+  transistorData[transistorIndex++] = c2;
+}
 
-// create data file:
-// File: { Header, Indirect, Instances, Vertices, Indices }
-//   Header: { indirectOffset: u32, instancesOffset: u32, verticesOffset: u32, indicesOffset: u32 }
-//   Indirect: array of { indexCount: u32, instanceCount: u32, firstIndex: u32, baseVertex: u32, baseInstance: u32 }
-//   Instances: array of { nodeId: u32, layer: u32 }
-//   Vertices: array of { position: vec2f }
-//   Indices: array of { index: u32 }
+const instancesDataOffset = headerSize;
+const verticesDataOffset = instancesDataOffset + instanceCount * instanceSize;
+const indicesDataOffset = verticesDataOffset + coordCount * coordSize;
+const transistorsDataOffset = indicesDataOffset + indexCount * indexSize;
+const dataSize = transistorsDataOffset + transistorData.length * transistorSize;
+
+const data = new Uint8Array(dataSize);
+data.set(
+  new Uint8Array(
+    Uint32Array.of(
+      instancesDataOffset,
+      verticesDataOffset,
+      indicesDataOffset,
+      transistorsDataOffset,
+    ).buffer,
+  ),
+  0,
+);
+data.set(new Uint8Array(instances.buffer), instancesDataOffset);
+data.set(
+  new Uint8Array(vertices.buffer, 0, coordCount * coordSize),
+  verticesDataOffset,
+);
+data.set(
+  new Uint8Array(indices.buffer, 0, indexCount * indexSize),
+  indicesDataOffset,
+);
+data.set(new Uint8Array(transistorData.buffer), transistorsDataOffset);
 
 fs.mkdirSync("public", { recursive: true });
-
-const indirectOffset = 4 * 4;
-const indirectData = new Uint32Array(indirect).buffer;
-const instancesOffset = indirectOffset + indirectData.byteLength;
-const instancesData = new Uint32Array(instances).buffer;
-const verticesOffset = instancesOffset + instancesData.byteLength;
-const vertexData = new Float32Array(vertices).buffer;
-const indicesOffset = verticesOffset + vertexData.byteLength;
-const indexData = new Uint32Array(indices).buffer;
-
-const headerData = new Uint32Array([
-  indirectOffset,
-  instancesOffset,
-  verticesOffset,
-  indicesOffset,
-]).buffer;
-
-const data = new Uint8Array(
-  headerData.byteLength +
-    indirectData.byteLength +
-    instancesData.byteLength +
-    vertexData.byteLength +
-    indexData.byteLength,
-);
-data.set(new Uint8Array(headerData), 0);
-data.set(new Uint8Array(indirectData), indirectOffset);
-data.set(new Uint8Array(instancesData), instancesOffset);
-data.set(new Uint8Array(vertexData), verticesOffset);
-data.set(new Uint8Array(indexData), indicesOffset);
-fs.writeFileSync("public/data", data);
+fs.writeFileSync("public/data.gz", zlib.gzipSync(data));
