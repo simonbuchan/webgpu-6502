@@ -8,6 +8,7 @@
   },
   "scripts": {
     "update-data": "node scripts/update-data.js",
+    "build": "vite build",
     "dev": "vite dev"
   },
   "dependencies": {
