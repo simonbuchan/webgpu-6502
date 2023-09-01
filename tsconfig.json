@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "module": "node16",
+    "target": "esnext",
+    "lib": ["esnext", "dom", "dom.iterable"],
+    "strict": true,
+    "jsx": "preserve",
+    "jsxImportSource": "solid-js",
+    "types": ["vite/client", "@webgpu/types"]
+  },
+  "exclude": [
+    "node_modules"
+  ]
+}
