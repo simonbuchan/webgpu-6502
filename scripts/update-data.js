@@ -40,7 +40,7 @@ const headerSize = 4 * 4;
 const instanceSize = 2 + 2 + 2 + 4 + 4 + 2;
 const coordSize = 2;
 const indexSize = 2;
-const transistorSize = 2 + 2 + 2;
+const transistorSize = 4;
 
 const instanceCount = segments.length;
 // not exact as we filter out some points
@@ -55,11 +55,14 @@ let coordCount = 0;
 const vertices = new Uint16Array(maxCoordCount);
 let indexCount = 0;
 const indices = new Uint16Array(maxIndexCount);
-const transistorData = new Uint16Array(transistors.length);
+const transistorData = new Uint32Array(transistors.length * 2);
 
+let nodeMax = 0;
 let degenerateCount = 0;
 
 for (const [node, pull, layer, ...path] of segments) {
+  nodeMax = Math.max(nodeMax, node);
+
   const points = Array.from(
     { length: path.length / 2 },
     (_, i) => new poly2tri.Point(path[i * 2], path[i * 2 + 1]),
@@ -117,18 +120,23 @@ for (const [node, pull, layer, ...path] of segments) {
   instanceOffset += instanceSize;
 }
 
+console.log("nodeMax: " + nodeMax);
+
 let transistorIndex = 0;
 for (const [name, gate, c1, c2] of transistors) {
+  if (gate > nodeMax || c1 > nodeMax || c2 > nodeMax) {
+    console.log("  invalid transistor node reference: " + name);
+  }
+  // pack into u32 values for the shader
   transistorData[transistorIndex++] = gate;
-  transistorData[transistorIndex++] = c1;
-  transistorData[transistorIndex++] = c2;
+  transistorData[transistorIndex++] = (c1 << 16) | c2;
 }
 
 const instancesDataOffset = headerSize;
 const verticesDataOffset = instancesDataOffset + instanceCount * instanceSize;
 const indicesDataOffset = verticesDataOffset + coordCount * coordSize;
 const transistorsDataOffset = indicesDataOffset + indexCount * indexSize;
-const dataSize = transistorsDataOffset + transistorData.length * transistorSize;
+const dataSize = transistorsDataOffset + transistorData.byteLength;
 
 const data = new Uint8Array(dataSize);
 data.set(
