@@ -20,6 +20,7 @@ import transistors from "./transistors.js";
 //     instancesOffset: u32,
 //     verticesOffset: u32,
 //     indicesOffset: u32,
+//     nodesOffset: u32,
 //     transistorsOffset: u32,
 //   }
 //   polygons: {
@@ -33,14 +34,16 @@ import transistors from "./transistors.js";
 //     vertices: array of { position: vec2<u16> }
 //     indices: array of { index: u16 }
 //   }
-//   transistors: array of { gate: u16, c1: u16, c2: u16 }
+//   simulation: {
+//     nodes: array of { data: u32 }
+//     transistors: array of { gate: u16, c1: u16, c2: u16 }
+//   }
 // }
 
-const headerSize = 4 * 4;
+const headerSize = 5 * 4;
 const instanceSize = 2 + 2 + 2 + 4 + 4 + 2;
 const coordSize = 2;
 const indexSize = 2;
-const transistorSize = 4;
 
 const instanceCount = segments.length;
 // not exact as we filter out some points
@@ -49,18 +52,27 @@ const maxCoordCount = segments.reduce((acc, s) => acc + (s.length - 3), 0);
 // so total number of indices is (total number of points - 2 * number of polygons) * 3
 const maxIndexCount = (maxCoordCount / 2 - 2 * instanceCount) * 3;
 
+// polygons
 let instanceOffset = 0;
 const instances = new DataView(new ArrayBuffer(instanceCount * instanceSize));
 let coordCount = 0;
 const vertices = new Uint16Array(maxCoordCount);
 let indexCount = 0;
 const indices = new Uint16Array(maxIndexCount);
+
+// simulation
+const nodePullUp = new Map();
 const transistorData = new Uint32Array(transistors.length * 2);
 
 let nodeMax = 0;
 let degenerateCount = 0;
 
 for (const [node, pull, layer, ...path] of segments) {
+  if (pull === "+") {
+    nodePullUp.set(node, true);
+  } else {
+    nodePullUp.set(node, false);
+  }
   nodeMax = Math.max(nodeMax, node);
 
   const points = Array.from(
@@ -122,6 +134,18 @@ for (const [node, pull, layer, ...path] of segments) {
 
 console.log("nodeMax: " + nodeMax);
 
+const HI = 2;
+const PULL_HI = 8;
+const INPUT = 16;
+const nodeData = new Uint32Array(nodeMax + 1);
+for (const [node, pull] of nodePullUp) {
+  // Set some nodes as pullup like the JS does. Not sure why.
+  // Maybe something to do with depletion vs enhancement transistors?
+  nodeData[node] = pull ? HI | PULL_HI | INPUT : 0;
+}
+const nodeInCount = {};
+const nodeOutCount = {};
+
 let transistorIndex = 0;
 for (const [name, gate, c1, c2] of transistors) {
   if (gate > nodeMax || c1 > nodeMax || c2 > nodeMax) {
@@ -130,12 +154,33 @@ for (const [name, gate, c1, c2] of transistors) {
   // pack into u32 values for the shader
   transistorData[transistorIndex++] = gate;
   transistorData[transistorIndex++] = (c1 << 16) | c2;
+
+  nodeInCount[c1] ??= 0;
+  nodeInCount[c1] += 1;
+  nodeInCount[c2] ??= 0;
+  nodeInCount[c2] += 1;
+  nodeOutCount[gate] ??= 0;
+  nodeOutCount[gate] += 1;
 }
+
+console.table(
+  Object.entries(nodeInCount)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10),
+  ["0", "1"],
+);
+console.table(
+  Object.entries(nodeOutCount)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10),
+  ["0", "1"],
+);
 
 const instancesDataOffset = headerSize;
 const verticesDataOffset = instancesDataOffset + instanceCount * instanceSize;
 const indicesDataOffset = verticesDataOffset + coordCount * coordSize;
-const transistorsDataOffset = indicesDataOffset + indexCount * indexSize;
+const nodeDataOffset = indicesDataOffset + indexCount * indexSize;
+const transistorsDataOffset = nodeDataOffset + nodeData.byteLength;
 const dataSize = transistorsDataOffset + transistorData.byteLength;
 
 const data = new Uint8Array(dataSize);
@@ -145,6 +190,7 @@ data.set(
       instancesDataOffset,
       verticesDataOffset,
       indicesDataOffset,
+      nodeDataOffset,
       transistorsDataOffset,
     ).buffer,
   ),

@@ -1,12 +1,14 @@
 <!DOCTYPE html>
-<html lang="en" class="h-full bg-sky-800 text-sky-200 flex flex-col">
+<html lang="en" class="h-[100vh] bg-sky-800 text-sky-200 flex flex-col">
 <head>
-    <meta charset="UTF-8">
-    <title>WebGPU 6502</title>
-    <link rel="stylesheet" href="src/tailwind.css">
-    <script src="src/main.tsx" type="module"></script>
+  <meta charset="UTF-8">
+  <title>WebGPU 6502</title>
+  <link rel="stylesheet" href="src/tailwind.css">
+  <script src="src/main.tsx" type="module"></script>
 </head>
-<body class="flex-1 flex flex-col">
-<canvas id="canvas" class="flex-1 block"></canvas>
+<body id=canvas-size class="relative flex-1">
+  <canvas id="canvas" width="100" height="100"
+          class="absolute inset-0"></canvas>
+<div id="panel" class="absolute right-1 top-1 bg-opacity-50 bg-black"></div>
 </body>
 </html>

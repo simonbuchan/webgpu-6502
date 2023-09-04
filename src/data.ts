@@ -27,6 +27,7 @@ export async function fetchData(): Promise<ArrayBuffer> {
 //     instancesOffset: u32,
 //     verticesOffset: u32,
 //     indicesOffset: u32,
+//     nodesOffset: u32,
 //     transistorsOffset: u32,
 //   }
 //   polygons: {
@@ -41,7 +42,10 @@ export async function fetchData(): Promise<ArrayBuffer> {
 //     vertices: array of { position: vec2<u16> }
 //     indices: array of { index: u16 }
 //   }
-//   transistors: array of { gate: u16, c1: u16, c2: u16 }
+//   simulation: {
+//     nodes: array of { data: u16 }
+//     transistors: array of { gate: u16, c1: u16, c2: u16 }
+//   }
 // }
 
 export const instanceStride = 2 + 2 + 2 + 4 + 4 + 2;
@@ -61,17 +65,26 @@ export interface DataFile {
     vertices: ArrayBuffer;
     indices: ArrayBuffer;
   };
-  transistors: ArrayBuffer;
+  simulation: {
+    nodes: ArrayBuffer;
+    transistors: ArrayBuffer;
+  };
 }
 
 export function parseData(data: ArrayBuffer): DataFile {
-  const header = new Uint32Array(data, 0, 4);
-  const [instancesOffset, verticesOffset, indicesOffset, transistorsOffset] =
-    header;
+  const header = new Uint32Array(data, 0, 5);
+  const [
+    instancesOffset,
+    verticesOffset,
+    indicesOffset,
+    nodesOffset,
+    transistorsOffset,
+  ] = header;
 
   const instances = data.slice(instancesOffset, verticesOffset);
   const vertices = data.slice(verticesOffset, indicesOffset);
-  const indices = data.slice(indicesOffset, transistorsOffset);
+  const indices = data.slice(indicesOffset, nodesOffset);
+  const nodes = data.slice(nodesOffset, transistorsOffset);
   const transistors = data.slice(transistorsOffset);
 
   const instanceCount = instances.byteLength / instanceStride;
@@ -91,6 +104,9 @@ export function parseData(data: ArrayBuffer): DataFile {
       vertices,
       indices,
     },
-    transistors,
+    simulation: {
+      nodes,
+      transistors,
+    },
   };
 }

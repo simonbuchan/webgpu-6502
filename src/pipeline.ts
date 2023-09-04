@@ -6,7 +6,20 @@ const module = device.createShaderModule({
   code,
 });
 
-export const bindGroupLayout = device.createBindGroupLayout({
+export const viewBindGroupLayout = device.createBindGroupLayout({
+  entries: [
+    {
+      // u_view
+      binding: 0,
+      visibility: GPUShaderStage.VERTEX,
+      buffer: {
+        type: "uniform",
+      },
+    },
+  ],
+});
+
+export const stateBindGroupLayout = device.createBindGroupLayout({
   entries: [
     {
       // s_nodes
@@ -19,7 +32,7 @@ export const bindGroupLayout = device.createBindGroupLayout({
     {
       // s_transistors
       binding: 1,
-      visibility: 0,
+      visibility: GPUShaderStage.COMPUTE,
       buffer: {
         type: "read-only-storage",
       },
@@ -27,12 +40,10 @@ export const bindGroupLayout = device.createBindGroupLayout({
   ],
 });
 
-const pipelineLayout = device.createPipelineLayout({
-  bindGroupLayouts: [bindGroupLayout],
-});
-
 export const renderPipeline = await device.createRenderPipelineAsync({
-  layout: pipelineLayout,
+  layout: device.createPipelineLayout({
+    bindGroupLayouts: [stateBindGroupLayout, viewBindGroupLayout],
+  }),
   vertex: {
     module,
     entryPoint: "vs_poly",
@@ -82,6 +93,9 @@ export const renderPipeline = await device.createRenderPipelineAsync({
           },
         },
       },
+      {
+        format: "r32uint",
+      },
     ],
   },
   primitive: {
@@ -89,10 +103,22 @@ export const renderPipeline = await device.createRenderPipelineAsync({
   },
 });
 
-export const stepPipeline = await device.createComputePipelineAsync({
-  layout: pipelineLayout,
+const stateLayout = device.createPipelineLayout({
+  bindGroupLayouts: [stateBindGroupLayout],
+});
+
+export const weakenPipeline = await device.createComputePipelineAsync({
+  layout: stateLayout,
   compute: {
     module,
-    entryPoint: "cs_step",
+    entryPoint: "cs_weaken",
+  },
+});
+
+export const updatePipeline = await device.createComputePipelineAsync({
+  layout: stateLayout,
+  compute: {
+    module,
+    entryPoint: "cs_update",
   },
 });
