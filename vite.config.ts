@@ -9,6 +9,6 @@ export default defineConfig({
   },
   server: {
     // it confuses WebGPU
-    hmr: true,
+    hmr: false,
   },
 });

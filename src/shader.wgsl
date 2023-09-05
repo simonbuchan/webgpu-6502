@@ -11,11 +11,16 @@ const LAYER_COLORS = array<vec4f, 7>(
     vec4f(0.5, 0.0, 1.0, 0.75), // ???
 );
 
-const STATE_COLORS = array<vec4f, 4>(
+const STATE_COLORS = array<vec4f, 8>(
     vec4f(0.0, 0.0, 0.0, 0.0), // floating
     vec4f(0.0, 0.0, 0.7, 0.4), // low
     vec4f(1.0, 0.0, 0.25, 0.4), // high
     vec4f(1.0, 0.0, 0.4, 0.4), // short
+    // changed
+    vec4f(0.0, 0.0, 0.0, 0.0), // floating
+    vec4f(0.5, 0.5, 1.0, 0.8), // low
+    vec4f(1.0, 0.0, 0.5, 0.8), // high
+    vec4f(1.0, 0.0, 0.4, 0.8), // short
 );
 
 struct Attributes {
@@ -50,10 +55,10 @@ fn fs_poly(in: VertexOutput) -> FragmentOutput {
     let state = atomicLoad(&s_nodes[in.node]);
 
     let layer_color = LAYER_COLORS[in.layer];
-    let state_color = STATE_COLORS[(state | (state >> 2)) & 3];
+    let state_color = STATE_COLORS[(state & 3) | ((state >> 2) & 3) | ((state >> 5) & 1)];
     // alpha blend the layer and state color
     var out = FragmentOutput();
-    out.color = layer_color * (1.0 - state_color.a) + state_color * state_color.a;
+    out.color = mix(layer_color, state_color, state_color.a);
     out.node = (in.node << 8) | state;
     return out;
 }
@@ -74,6 +79,7 @@ const PULL_HI = 8u;
 
 // not cleared by cs_weaken
 const INPUT = 16u;
+const CHANGED = 32u;
 
 @group(0) @binding(0)
 var<storage, read_write> s_nodes: array<atomic<u32>>;
@@ -93,6 +99,7 @@ fn cs_weaken(
     let pull_weak = state & 3;
     let pull_new = select(pull_weak, pull_strong, pull_strong != 0);
     let update = pull_new | select(0, pull_strong << 2, input != 0) | input;
+    // note, clears CHANGED
     atomicStore(node, update);
 }
 
@@ -143,7 +150,8 @@ fn propagate_transistor(gate: u32, c1i: u32, c2i: u32) {
      old_pull,
      (strong_pull << 2) | strong_pull,
      strong_pull != 0);
+   let changed = select(0, CHANGED, new_pull != old_pull);
 
-   atomicOr(c1, new_pull);
-   atomicOr(c2, new_pull);
+   atomicOr(c1, new_pull | changed);
+   atomicOr(c2, new_pull | changed);
 }

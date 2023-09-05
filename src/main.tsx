@@ -1,15 +1,15 @@
 import { render } from "solid-js/web";
-import { createSignal, Show } from "solid-js";
+import { createMemo, createSignal, from, JSX, Setter, Show } from "solid-js";
 
 import * as pads from "./6502/pads.js";
 import * as Data from "./data.js";
 import { bufferFrom, canvas, context, device } from "./context.js";
 import {
-  stateBindGroupLayout,
   renderPipeline,
+  stateBindGroupLayout,
   updatePipeline,
-  weakenPipeline,
   viewBindGroupLayout,
+  weakenPipeline,
 } from "./pipeline.js";
 import {
   initNodeData,
@@ -22,45 +22,135 @@ import {
   writeDataBus,
 } from "./env.js";
 
-type NodeState = "float" | "low" | "high" | "shorted";
-const STATES: NodeState[] = ["float", "low", "high", "shorted"];
+type Charge = "float" | "low" | "high" | "shorted";
+const CHARGES: Charge[] = ["float", "low", "high", "shorted"];
 
 interface NodeInfo {
   id: number;
-  weak: NodeState;
-  strong: NodeState;
+  state: number;
+}
+
+interface NodeState {
+  weak: Charge;
+  strong: Charge;
   input: boolean;
+  changed: boolean;
+}
+
+function nodeState(state: number): NodeState {
+  return {
+    weak: CHARGES[state & 3],
+    strong: CHARGES[(state >> 2) & 3],
+    input: (state & 16) !== 0,
+    changed: (state & 32) !== 0,
+  };
 }
 
 const [node, setNode] = createSignal<NodeInfo | null>(null);
 const [running, setRunning] = createSignal(false);
 
+const nodeDataListeners = new Set<Setter<Uint32Array | undefined>>();
+const nodeDataSignal = from<Uint32Array>((listener) => {
+  nodeDataListeners.add(listener);
+  return () => {
+    nodeDataListeners.delete(listener);
+  };
+});
+
+function Pad(props: { name: keyof typeof pads }) {
+  const checked = createMemo(() => {
+    // just need a dep on this changing.
+    if (nodeDataSignal() === undefined) return false;
+    return nodeIsHigh(pads[props.name] as number);
+  });
+  return (
+    <div class="flex flex-row gap-1 align-middle">
+      <input
+        type="checkbox"
+        class="h-4 w-4"
+        checked={checked()}
+        onChange={async (event) => {
+          pullNode(pads[props.name] as number, event.target.checked);
+          // await updateUntilStable();
+          device.queue.writeBuffer(nodeBuffer, 0, nodeData);
+          draw();
+        }}
+      />
+      <div class="flex-1">{props.name}</div>
+    </div>
+  );
+}
+
+function Button(props: JSX.IntrinsicElements["button"]) {
+  return (
+    <button
+      {...props}
+      class="rounded bg-blue-500 px-2 py-1 font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-400"
+    />
+  );
+}
+
+function NodeState(props: { state: NodeState }) {
+  return (
+    <div>
+      <div>Weak: {props.state.weak}</div>
+      <div>Strong: {props.state.strong}</div>
+      {props.state.input && <div>Input</div>}
+      {props.state.changed && <div>Changed</div>}
+    </div>
+  );
+}
+
 function Panel() {
   return (
     <div class="flex w-40 flex-col gap-1 p-1">
-      <div class="flex flex-row gap-1">
-        <button
-          onClick={resetState}
+      <div class="flex flex-row flex-wrap gap-1">
+        <Button
+          onClick={() => {
+            initNodeData();
+            device.queue.writeBuffer(nodeBuffer, 0, nodeData);
+            draw();
+          }}
           disabled={running()}
-          class="flex-1 rounded bg-blue-500 px-4 py-2 font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-400"
         >
+          Init
+        </Button>
+        <Button onClick={resetState} disabled={running()}>
           Reset
-        </button>
-        <button
-          onClick={step}
+        </Button>
+        <Button
+          onClick={async () => {
+            await update(true);
+            device.queue.writeBuffer(nodeBuffer, 0, nodeData);
+            draw();
+          }}
           disabled={running()}
-          class="flex-1 rounded bg-blue-500 px-4 py-2 font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-400"
         >
+          Update Weaken
+        </Button>
+        <Button
+          onClick={async () => {
+            await update(false);
+            device.queue.writeBuffer(nodeBuffer, 0, nodeData);
+            draw();
+          }}
+          disabled={running()}
+        >
+          Update
+        </Button>
+        <Button onClick={step} disabled={running()}>
           Step
-        </button>
+        </Button>
+      </div>
+      <div class="flex flex-col gap-1">
+        <Pad name="clk0" />
+        <Pad name="res" />
       </div>
       <Show when={node()}>
         {(node) => (
           <div>
             <div>Node: {node().id}</div>
-            <div>Weak: {node().weak}</div>
-            <div>Strong: {node().strong}</div>
-            {node().input && <div>Input</div>}
+            <NodeState state={nodeState(node().state)} />
           </div>
         )}
       </Show>
@@ -157,11 +247,12 @@ canvas.addEventListener("wheel", (event) => {
 
 let dragEvent: MouseEvent | null = null;
 canvas.addEventListener("mousedown", (event) => {
-  if (event.button === 0) {
-    dragEvent = event;
-    canvas.addEventListener("mousemove", dragMove);
-    canvas.addEventListener("mouseup", dragUp);
+  if (event.button !== 0) {
+    return;
   }
+  dragEvent = event;
+  addEventListener("mousemove", dragMove);
+  addEventListener("mouseup", dragUp);
 });
 
 function dragMove(event: MouseEvent) {
@@ -175,11 +266,12 @@ function dragMove(event: MouseEvent) {
 }
 
 function dragUp(event: MouseEvent) {
-  if (event.button === 0) {
-    dragEvent = null;
-    canvas.removeEventListener("mousemove", dragMove);
-    canvas.removeEventListener("mouseup", dragUp);
+  if (event.button !== 0) {
+    return;
   }
+  dragEvent = null;
+  removeEventListener("mousemove", dragMove);
+  removeEventListener("mouseup", dragUp);
 }
 
 const viewBindGroup = device.createBindGroup({
@@ -261,16 +353,7 @@ canvas.addEventListener("mousemove", async (event) => {
   readbackBuffer.unmap();
   readback = false;
 
-  setNode(
-    !data
-      ? null
-      : {
-          id: data >> 8,
-          weak: STATES[data & 3],
-          strong: STATES[(data >> 2) & 3],
-          input: ((data >> 4) & 1) != 0,
-        },
-  );
+  setNode(!data ? null : { id: data >> 8, state: data & 0xff });
 });
 
 addEventListener("keydown", (e) => {
@@ -322,8 +405,8 @@ pages[0].set([
 ]);
 
 async function step() {
-  const clkHigh = nodeIsHigh(pads.clk0);
-  pullNode(pads.clk0, !clkHigh);
+  const clkHigh = !nodeIsHigh(pads.clk0);
+  pullNode(pads.clk0, clkHigh);
   await updateUntilStable();
 
   if (!clkHigh) {
@@ -331,6 +414,7 @@ async function step() {
       const addr = readAddressBus();
       const page = pages[addr >> 8];
       writeDataBus(page ? page[addr & 0xff] : 0);
+      await updateUntilStable();
     }
   } else {
     if (!nodeIsHigh(pads.rw)) {
@@ -357,30 +441,15 @@ async function updateUntilStable() {
   // need to read back state to tell if we're done anyway, so might as well
   // get the output while we're here.
   while (running()) {
-    update(first);
+    let updates = await update(first);
     first = false;
-    nodeMappingBuffer.mapAsync(GPUMapMode.READ);
-    await device.queue.onSubmittedWorkDone();
-    // need to clone the mapped data, so double construct the Uint32Array
-    const newNodeData = new Uint32Array(nodeMappingBuffer.getMappedRange());
-    let updates = 0;
-    for (let i = 0; i < nodeData.length; i++) {
-      if (nodeData[i] !== newNodeData[i]) {
-        console.log(`${i}: ${nodeData[i]} => ${newNodeData[i]}`);
-        updates++;
-      }
-    }
-    nodeData.set(newNodeData);
-    nodeMappingBuffer.unmap();
-    console.log("updates", updates);
-
     const shortIndex = nodeData.indexOf(3);
     if (shortIndex !== -1) {
       console.log(`shorted node ${shortIndex}`);
       break;
     }
 
-    if (updates === 0) {
+    if (updates) {
       const end = performance.now();
       console.log(`stable after ${count} updates in ${(end - start) | 0}ms`);
       setRunning(false);
@@ -390,33 +459,35 @@ async function updateUntilStable() {
     // if it's the same result the first time through, then there were 0 updates
     count += 1;
   }
+
+  for (const listener of nodeDataListeners) {
+    listener(nodeData);
+  }
 }
 
-function update(weaken = false) {
+async function update(weaken = false): Promise<boolean> {
   const commandEncoder = device.createCommandEncoder();
-  {
-    const pass = commandEncoder.beginComputePass();
-    pass.setBindGroup(0, stateBindGroup);
+  const pass = commandEncoder.beginComputePass();
+  pass.setBindGroup(0, stateBindGroup);
 
-    if (weaken) {
-      pass.setPipeline(weakenPipeline);
-      pass.dispatchWorkgroups(
-        Math.ceil(
-          data.polygons.instances.byteLength / Data.instanceStride / 256,
-        ),
-      );
-    }
+  const nodeSize = 4;
+  const transistorSize = 8;
+  const workgroupSize = 256;
 
-    const transistorSize = 8;
-    const workgroupSize = 256;
-    pass.setPipeline(updatePipeline);
+  if (weaken) {
+    pass.setPipeline(weakenPipeline);
     pass.dispatchWorkgroups(
-      Math.ceil(
-        data.simulation.transistors.byteLength / transistorSize / workgroupSize,
-      ),
+      Math.ceil(data.simulation.nodes.byteLength / nodeSize / workgroupSize),
     );
-    pass.end();
   }
+
+  pass.setPipeline(updatePipeline);
+  pass.dispatchWorkgroups(
+    Math.ceil(
+      data.simulation.transistors.byteLength / transistorSize / workgroupSize,
+    ),
+  );
+  pass.end();
   commandEncoder.copyBufferToBuffer(
     nodeBuffer,
     0,
@@ -425,9 +496,27 @@ function update(weaken = false) {
     nodeData.byteLength,
   );
   device.queue.submit([commandEncoder.finish()]);
-}
 
-await resetState();
+  nodeMappingBuffer.mapAsync(GPUMapMode.READ);
+  await device.queue.onSubmittedWorkDone();
+
+  // need to clone the mapped data, so double construct the Uint32Array
+  const newNodeData = new Uint32Array(nodeMappingBuffer.getMappedRange());
+  let updates = 0;
+  for (let i = 0; i < nodeData.length; i++) {
+    const last = nodeData[i] & 3;
+    const next = newNodeData[i] & 3;
+    if (last !== next) {
+      console.log(`${i}: ${CHARGES[last]} => ${CHARGES[next]}`);
+      updates++;
+    }
+  }
+  nodeData.set(newNodeData);
+  nodeMappingBuffer.unmap();
+
+  console.log("updates", updates);
+  return updates !== 0;
+}
 
 function draw() {
   const target = context.getCurrentTexture();
