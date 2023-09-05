@@ -1,6 +1,31 @@
 @group(1) @binding(0)
 var<uniform> u_view: mat2x3f;
 
+struct Transistor {
+  gate: u32,
+  c1_c2: u32,
+}
+
+// states for the node being connected to power or ground
+// neither is floating, both is a short-circut
+const LO = 1u;
+const HI = 2u;
+
+// directly connected to power or ground
+const PULL_LO = 4u;
+const PULL_HI = 8u;
+
+// not cleared by cs_weaken
+const INPUT = 16u;
+const CHANGED = 32u;
+const NODE_GATE = 64u;
+const NODE_C1C2 = 128u;
+
+@group(0) @binding(0)
+var<storage, read_write> s_nodes: array<atomic<u32>>;
+@group(0) @binding(1)
+var<storage> s_transistors: array<Transistor>;
+
 const LAYER_COLORS = array<vec4f, 7>(
     vec4f(0.5, 0.5, 0.75, 0.4), // metal
     vec4f(1.0, 1.0, 0.0, 1.0), // switched diffusion
@@ -16,8 +41,8 @@ const STATE_COLORS = array<vec4f, 8>(
     vec4f(0.0, 0.0, 0.7, 0.4), // low
     vec4f(1.0, 0.0, 0.25, 0.4), // high
     vec4f(1.0, 0.0, 0.4, 0.4), // short
-    // changed
-    vec4f(0.0, 0.0, 0.0, 0.0), // floating
+    // highlight
+    vec4f(1.0, 1.0, 1.0, 0.8), // floating
     vec4f(0.5, 0.5, 1.0, 0.8), // low
     vec4f(1.0, 0.0, 0.5, 0.8), // high
     vec4f(1.0, 0.0, 0.4, 0.8), // short
@@ -53,38 +78,18 @@ struct FragmentOutput {
 @fragment
 fn fs_poly(in: VertexOutput) -> FragmentOutput {
     let state = atomicLoad(&s_nodes[in.node]);
+    let highlight = select(0u, 4u, (state >> 5) != 0);
 
     let layer_color = LAYER_COLORS[in.layer];
-    let state_color = STATE_COLORS[(state & 3) | ((state >> 2) & 3) | ((state >> 5) & 1)];
+
+    let state_color = STATE_COLORS[(state & 3) | ((state >> 2) & 3) | highlight];
+
     // alpha blend the layer and state color
     var out = FragmentOutput();
     out.color = mix(layer_color, state_color, state_color.a);
-    out.node = (in.node << 8) | state;
+    out.node = (in.node << 16) | (in.layer << 8) | state;
     return out;
 }
-
-struct Transistor {
-  gate: u32,
-  c1_c2: u32,
-}
-
-// states for the node being connected to power or ground
-// neither is floating, both is a short-circut
-const LO = 1u;
-const HI = 2u;
-
-// directly connected to power or ground
-const PULL_LO = 4u;
-const PULL_HI = 8u;
-
-// not cleared by cs_weaken
-const INPUT = 16u;
-const CHANGED = 32u;
-
-@group(0) @binding(0)
-var<storage, read_write> s_nodes: array<atomic<u32>>;
-@group(0) @binding(1)
-var<storage> s_transistors: array<Transistor>;
 
 @compute @workgroup_size(256, 1, 1)
 fn cs_weaken(

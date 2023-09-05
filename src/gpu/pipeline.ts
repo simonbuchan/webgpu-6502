@@ -1,6 +1,6 @@
 import { device, format } from "./context.js";
 import code from "./shader.wgsl?raw";
-import * as Data from "./data.js";
+import * as Data from "../data/load.js";
 
 const module = device.createShaderModule({
   code,

@@ -6,7 +6,8 @@
     "strict": true,
     "jsx": "preserve",
     "jsxImportSource": "solid-js",
-    "types": ["vite/client", "@webgpu/types"]
+    "types": ["vite/client", "@webgpu/types"],
+    "verbatimModuleSyntax": true
   },
   "exclude": [
     "node_modules"
