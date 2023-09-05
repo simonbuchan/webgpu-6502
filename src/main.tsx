@@ -155,17 +155,32 @@ canvas.addEventListener("wheel", (event) => {
   draw();
 });
 
-canvas.addEventListener("mousemove", (event) => {
-  if (!(event.buttons & 1)) {
-    return;
+let dragEvent: MouseEvent | null = null;
+canvas.addEventListener("mousedown", (event) => {
+  if (event.button === 0) {
+    dragEvent = event;
+    canvas.addEventListener("mousemove", dragMove);
+    canvas.addEventListener("mouseup", dragUp);
   }
-  let pixelToView = 2 / canvas.width;
+});
 
-  x += event.movementX * pixelToView;
-  y -= event.movementY * pixelToView;
+function dragMove(event: MouseEvent) {
+  const dx = event.clientX - dragEvent!.clientX;
+  const dy = event.clientY - dragEvent!.clientY;
+  dragEvent = event;
+  x += (dx * 2 * devicePixelRatio) / canvas.width;
+  y -= (dy * 2 * devicePixelRatio) / canvas.height;
   setView();
   draw();
-});
+}
+
+function dragUp(event: MouseEvent) {
+  if (event.button === 0) {
+    dragEvent = null;
+    canvas.removeEventListener("mousemove", dragMove);
+    canvas.removeEventListener("mouseup", dragUp);
+  }
+}
 
 const viewBindGroup = device.createBindGroup({
   layout: viewBindGroupLayout,
