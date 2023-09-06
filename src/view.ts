@@ -1,6 +1,6 @@
-import { canvas, device } from "./gpu/context.js";
-import { draw } from "./gpu/draw.js";
-import { resizeNodeTexture, viewBuffer } from "./gpu/resources.js";
+import { canvas, device } from "./gpu/context";
+import { draw } from "./gpu/draw";
+import { resizeNodeTexture, viewBuffer } from "./gpu/resources";
 
 // Chip polygon coordinates are within [0,chipSize]
 const chipSize = 10_000;

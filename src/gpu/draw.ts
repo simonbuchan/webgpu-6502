@@ -1,4 +1,4 @@
-import { context, device } from "./context.js";
+import { context, device } from "./context";
 import {
   indicesBuffer,
   instancesBuffer,
@@ -6,10 +6,10 @@ import {
   stateBindGroup,
   verticesBuffer,
   viewBindGroup,
-} from "./resources.js";
-import { renderPipeline } from "./pipeline.js";
-import * as Data from "../data/load.js";
-import { data } from "../data/data.js";
+} from "./resources";
+import { renderPipeline } from "./pipeline";
+import * as Data from "../data/load";
+import { data } from "../data/data";
 
 export function draw() {
   const target = context.getCurrentTexture();

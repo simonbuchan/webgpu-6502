@@ -1,19 +1,19 @@
 {
   "compilerOptions": {
-    "module": "node16",
+    "moduleResolution": "bundler",
+    "module": "esnext",
     "target": "esnext",
     "lib": ["esnext", "dom", "dom.iterable"],
     "strict": true,
     "jsx": "preserve",
     "jsxImportSource": "solid-js",
     "types": ["vite/client", "@webgpu/types"],
-    "verbatimModuleSyntax": true
+    "verbatimModuleSyntax": true,
+    "customConditions": [
+      "browser"
+    ]
   },
-  "references": [
-    { "path": "./tsconfig.src.json" }
-  ],
-  "exclude": [
-    "node_modules",
-    "src",
-  ],
+  "include": [
+    "src"
+  ]
 }

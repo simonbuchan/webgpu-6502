@@ -26,26 +26,32 @@ var<storage, read_write> s_nodes: array<atomic<u32>>;
 @group(0) @binding(1)
 var<storage> s_transistors: array<Transistor>;
 
-const LAYER_COLORS = array<vec4f, 7>(
-    vec4f(0.5, 0.5, 0.75, 0.4), // metal
-    vec4f(1.0, 1.0, 0.0, 1.0), // switched diffusion
-    vec4f(1.0, 0.0, 1.0, 1.0), // input diode
-    vec4f(0.3, 1.0, 0.3, 1.0), // grounded diffusion
-    vec4f(1.0, 0.3, 0.3, 1.0), // powered diffusion
-    vec4f(0.5, 0.1, 0.75, 1.0), // polysilicon
-    vec4f(0.5, 0.0, 1.0, 0.75), // ???
+const LAYER_COLORS = array<vec4f, 6>(
+    vec4f(0.6, 0.6, 0.5, 0.4), // metal
+    vec4f(0.6, 0.6, 0.0, 1.0), // switched diffusion
+    vec4f(0.6, 0.0, 0.6, 1.0), // input diode
+    vec4f(0.3, 0.6, 0.3, 1.0), // grounded diffusion
+    vec4f(0.6, 0.3, 0.3, 1.0), // powered diffusion
+    vec4f(0.4, 0.2, 0.5, 1.0), // polysilicon
 );
 
 const STATE_COLORS = array<vec4f, 8>(
     vec4f(0.0, 0.0, 0.0, 0.0), // floating
-    vec4f(0.0, 0.0, 0.7, 0.4), // low
+    vec4f(0.0, 0.7, 0.0, 0.4), // low
     vec4f(1.0, 0.0, 0.25, 0.4), // high
     vec4f(1.0, 0.0, 0.4, 0.4), // short
-    // highlight
+    // changed
     vec4f(1.0, 1.0, 1.0, 0.8), // floating
-    vec4f(0.5, 0.5, 1.0, 0.8), // low
+    vec4f(0.5, 1.0, 0.5, 0.8), // low
     vec4f(1.0, 0.0, 0.5, 0.8), // high
     vec4f(1.0, 0.0, 0.4, 0.8), // short
+);
+
+const HOVER_COLORS = array<vec4f, 4>(
+    vec4f(0.0, 0.0, 0.0, 0.0),
+    vec4f(1.0, 1.0, 0.0, 0.6), // gate
+    vec4f(0.0, 0.0, 1.0, 0.6), // c1c2
+    vec4f(1.0, 0.0, 0.0, 0.6), // both!?
 );
 
 struct Attributes {
@@ -78,15 +84,20 @@ struct FragmentOutput {
 @fragment
 fn fs_poly(in: VertexOutput) -> FragmentOutput {
     let state = atomicLoad(&s_nodes[in.node]);
-    let highlight = select(0u, 4u, (state >> 5) != 0);
+    let highlight = select(0u, 4u, (state & CHANGED) != 0);
 
     let layer_color = LAYER_COLORS[in.layer];
 
     let state_color = STATE_COLORS[(state & 3) | ((state >> 2) & 3) | highlight];
 
+    let hover_color = HOVER_COLORS[state >> 6];
+
     // alpha blend the layer and state color
     var out = FragmentOutput();
-    out.color = mix(layer_color, state_color, state_color.a);
+    out.color = mix(
+        mix(layer_color, state_color, state_color.a),
+        hover_color,
+        hover_color.a);
     out.node = (in.node << 16) | (in.layer << 8) | state;
     return out;
 }

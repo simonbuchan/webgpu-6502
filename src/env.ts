@@ -1,5 +1,5 @@
-import * as pads from "./6502/pads.js";
-import { HI, INPUT, LO, nodeData, PULL_HI, PULL_LO } from "./data/data.js";
+import * as pads from "./6502/pads";
+import { HI, INPUT, LO, nodeData, PULL_HI, PULL_LO } from "./data/data";
 
 export function readAddressBus() {
   let address = 0;

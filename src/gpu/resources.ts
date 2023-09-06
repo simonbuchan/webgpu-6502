@@ -1,6 +1,6 @@
-import { bufferFrom, canvas, device } from "./context.js";
-import { stateBindGroupLayout, viewBindGroupLayout } from "./pipeline.js";
-import { data } from "../data/data.js";
+import { bufferFrom, canvas, device } from "./context";
+import { stateBindGroupLayout, viewBindGroupLayout } from "./pipeline";
+import { data } from "../data/data";
 
 export const instancesBuffer = bufferFrom(
   data.polygons.instances,

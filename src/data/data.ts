@@ -1,4 +1,4 @@
-import * as Data from "./load.js";
+import * as Data from "./load";
 
 export const data = await Data.load();
 
@@ -41,6 +41,7 @@ export function updateNodeHover(node: number) {
     const c1 = c1c2 & 0xffff;
     const c2 = c1c2 >>> 16;
 
+    // const on = (nodeData[gate] & HI) !== 0;
     if (node == gate) {
       nodeData[c1] |= HOVER_GATE;
       nodeData[c2] |= HOVER_GATE;
