@@ -3,8 +3,11 @@ import zlib from "node:zlib";
 
 import * as poly2tri from "poly2tri";
 
-import segments from "./segments.js";
-import transistors from "./transistors.js";
+const name = process.argv[2] ?? "6502";
+
+const { default: names } = await import(`./${name}/names.js`);
+const { default: segments } = await import(`./${name}/segments.js`);
+const { default: transistors } = await import(`./${name}/transistors.js`);
 
 // segments is an array of polygons, each of which is an array of:
 //   [node, pull ("+" or "-"), layer, x0, y0, ...]
@@ -205,7 +208,9 @@ data.set(
   new Uint8Array(indices.buffer, 0, indexCount * indexSize),
   indicesDataOffset,
 );
+data.set(new Uint8Array(nodeData.buffer), nodeDataOffset);
 data.set(new Uint8Array(transistorData.buffer), transistorsDataOffset);
 
 fs.mkdirSync("public", { recursive: true });
+fs.writeFileSync("public/names.json", JSON.stringify(names));
 fs.writeFileSync("public/data.gz", zlib.gzipSync(data));
