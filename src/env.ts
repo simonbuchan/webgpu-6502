@@ -1,5 +1,5 @@
 import * as pads from "./6502/pads";
-import { HI, INPUT, LO, nodeData, PULL_HI, PULL_LO } from "./data/data";
+import { HI, LO, nodeData, nodeInputData } from "./data/data";
 
 export function readAddressBus() {
   let address = 0;
@@ -23,7 +23,7 @@ export function readDataBus() {
 
 export function writeDataBus(data: number) {
   for (let i = 0; i < 8; i++) {
-    nodeData[pads.db[i]] = (data & (1 << i)) !== 0 ? HI : LO;
+    nodeInputData[pads.db[i]] = (data & (1 << i)) !== 0 ? HI : LO;
   }
 }
 
@@ -31,26 +31,26 @@ export function nodeIsHigh(node: number) {
   return (nodeData[node] & HI) !== 0;
 }
 
-export function pullNode(node: number, value: boolean) {
-  nodeData[node] = value ? PULL_HI | INPUT : PULL_LO | INPUT;
+export function setInput(node: number, value: boolean) {
+  nodeInputData[node] = value ? HI : LO;
 }
 
 export function initNodeData() {
   for (let i = 0; i < nodeData.length; i++) {
-    nodeData[i] &= ~(HI | LO);
+    nodeData[i] = 0;
   }
 
   // voltage reference
-  pullNode(pads.vss, false);
-  pullNode(pads.vcc, true);
+  setInput(pads.vss, false);
+  setInput(pads.vcc, true);
 
   // initial state
-  pullNode(pads.res, false);
-  pullNode(pads.clk0, false);
-  pullNode(pads.rdy, true);
-  pullNode(pads.so, false);
-  pullNode(pads.irq, true); // active low
-  pullNode(pads.nmi, true); // active low
+  setInput(pads.res, false);
+  setInput(pads.clk0, false);
+  setInput(pads.rdy, true);
+  setInput(pads.so, false);
+  setInput(pads.irq, true); // active low
+  setInput(pads.nmi, true); // active low
 }
 
 const memoryPages = [

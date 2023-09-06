@@ -33,15 +33,20 @@ export function resizeNodeTexture(width: number, height: number) {
   nodeTexture = createNodeTexture(width, height);
 }
 
+export const nodeInputBuffer = bufferFrom(
+  data.simulation.nodes,
+  GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+);
+
+export const nodeBuffer = device.createBuffer({
+  size: nodeInputBuffer.size,
+  usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+});
+
 export const nodeMappingBuffer = device.createBuffer({
   size: data.simulation.nodes.byteLength,
   usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
 });
-
-export const nodeBuffer = bufferFrom(
-  data.simulation.nodes,
-  GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
-);
 
 const transistorBuffer = bufferFrom(
   data.simulation.transistors,
@@ -71,11 +76,17 @@ export const stateBindGroup = device.createBindGroup({
     {
       binding: 0,
       resource: {
-        buffer: nodeBuffer,
+        buffer: nodeInputBuffer,
       },
     },
     {
       binding: 1,
+      resource: {
+        buffer: nodeBuffer,
+      },
+    },
+    {
+      binding: 2,
       resource: {
         buffer: transistorBuffer,
       },

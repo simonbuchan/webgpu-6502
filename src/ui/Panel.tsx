@@ -1,7 +1,7 @@
 import { createSignal, Show } from "solid-js";
 import { Index } from "solid-js/web";
 
-import { resetState, step, update } from "../actions";
+import { sendInput, resetState, step, update } from "../actions";
 import { initNodeData } from "../env";
 import { draw } from "../gpu/draw";
 
@@ -32,39 +32,33 @@ export default function Panel() {
           onClick={() => {
             setChanges(new Map());
             initNodeData();
-            updateNodeData();
+            sendInput();
             draw();
           }}
           disabled={running()}
         >
           Init
         </Button>
-        <Button onClick={resetState} disabled={running()}>
-          Reset
-        </Button>
-        <Button
-          onClick={async () => {
-            const changes = new Map();
-            await update(true, changes);
-            setChanges(changes);
-            updateNodeData();
-            draw();
-          }}
-          disabled={running()}
-        >
-          Update Weaken
-        </Button>
         <Button
           onClick={async () => {
             const changes = new Map();
             await update(false, changes);
             setChanges(changes);
-            updateNodeData();
             draw();
           }}
           disabled={running()}
         >
           Update
+        </Button>
+        <Button
+          onClick={async () => {
+            const changes = new Map();
+            await resetState(changes);
+            setChanges(changes);
+          }}
+          disabled={running()}
+        >
+          Reset
         </Button>
         <Button
           onClick={async () => {
@@ -81,25 +75,30 @@ export default function Panel() {
         <Pad name="clk0" />
         <Pad name="res" />
       </div>
-      <Index each={Array.from(changes())}>
-        {(entry) => (
-          <div>
-            {entry()[0]}: {CHARGES[entry()[1][0]]}
-            {" -> "}
-            {CHARGES[entry()[1][1]]}
-          </div>
-        )}
-      </Index>
       <Show when={node()}>
         {(node) => (
           <div>
-            <div>Node: {node().id}</div>
+            <div>
+              Node: {node().name} ({node().id})
+            </div>
             <div>Layer: {LAYER_NAMES[node().layer]}</div>
             <NodeStateView state={nodeState(node().state)} />
           </div>
         )}
       </Show>
       <HoverNodes />
+      <div>Changes: {changes().size}</div>
+      <div class="flex max-h-80 flex-col overflow-auto">
+        <Index each={Array.from(changes())}>
+          {(entry) => (
+            <div>
+              {entry()[0]}: {CHARGES[entry()[1][0]]}
+              {" -> "}
+              {CHARGES[entry()[1][1]]}
+            </div>
+          )}
+        </Index>
+      </div>
     </div>
   );
 }

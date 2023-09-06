@@ -22,8 +22,16 @@ export const viewBindGroupLayout = device.createBindGroupLayout({
 export const stateBindGroupLayout = device.createBindGroupLayout({
   entries: [
     {
-      // s_nodes
+      // s_node_inputs
       binding: 0,
+      visibility: GPUShaderStage.COMPUTE,
+      buffer: {
+        type: "read-only-storage",
+      },
+    },
+    {
+      // s_nodes
+      binding: 1,
       visibility: GPUShaderStage.FRAGMENT | GPUShaderStage.COMPUTE,
       buffer: {
         type: "storage",
@@ -31,7 +39,7 @@ export const stateBindGroupLayout = device.createBindGroupLayout({
     },
     {
       // s_transistors
-      binding: 1,
+      binding: 2,
       visibility: GPUShaderStage.COMPUTE,
       buffer: {
         type: "read-only-storage",
@@ -107,11 +115,19 @@ const stateLayout = device.createPipelineLayout({
   bindGroupLayouts: [stateBindGroupLayout],
 });
 
-export const weakenPipeline = await device.createComputePipelineAsync({
+export const hoverUpdatePipeline = await device.createComputePipelineAsync({
   layout: stateLayout,
   compute: {
     module,
-    entryPoint: "cs_weaken",
+    entryPoint: "cs_hover_update",
+  },
+});
+
+export const inputPipeline = await device.createComputePipelineAsync({
+  layout: stateLayout,
+  compute: {
+    module,
+    entryPoint: "cs_input",
   },
 });
 

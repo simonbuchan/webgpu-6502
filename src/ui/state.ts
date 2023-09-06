@@ -1,8 +1,6 @@
 import { from, type Setter } from "solid-js";
 
 import { nodeData } from "../data/data";
-import { device } from "../gpu/context";
-import { nodeBuffer } from "../gpu/resources";
 
 type Charge = "float" | "low" | "high" | "shorted";
 export const CHARGES: Charge[] = ["float", "low", "high", "shorted"];
@@ -17,22 +15,19 @@ export const LAYER_NAMES = [
 
 export interface NodeInfo {
   id: number;
+  name: string | undefined;
   layer: number;
   state: number;
 }
 
 export interface NodeState {
-  weak: Charge;
-  strong: Charge;
-  input: boolean;
+  charge: Charge;
   changed: boolean;
 }
 
 export function nodeState(state: number): NodeState {
   return {
-    weak: CHARGES[state & 3],
-    strong: CHARGES[(state >> 2) & 3],
-    input: (state & 16) !== 0,
+    charge: CHARGES[state & 3],
     changed: (state & 32) !== 0,
   };
 }
@@ -49,5 +44,4 @@ export function updateNodeData() {
   for (const listener of nodeDataListeners) {
     listener(nodeData);
   }
-  device.queue.writeBuffer(nodeBuffer, 0, nodeData);
 }

@@ -3,11 +3,16 @@ import { canvas, device } from "./gpu/context";
 import { nodeTexture } from "./gpu/resources";
 import { draw } from "./gpu/draw";
 import "./view";
-import { clearNodeHover, updateNodeHover } from "./data/data";
+import { clearNodeHover, nodeNames, setNodeHoverData } from "./data/data";
 
 import Panel, { setNode } from "./ui/Panel";
+import {
+  sendNodeHover,
+  sendInput,
+  updateUntilStable,
+  fetchNodeData,
+} from "./actions";
 import { updateNodeData } from "./ui/state";
-import { updateUntilStable } from "./actions";
 
 render(Panel, document.getElementById("panel")!);
 
@@ -22,7 +27,6 @@ canvas.addEventListener("mousemove", async (event) => {
   readback = true;
   const x = event.offsetX * devicePixelRatio;
   const y = event.offsetY * devicePixelRatio;
-  // if (x < 0 || y < 0 || x >= canvas.width || y >= canvas.height) return;
 
   const commandEncoder = device.createCommandEncoder();
   commandEncoder.copyTextureToBuffer(
@@ -50,13 +54,15 @@ canvas.addEventListener("mousemove", async (event) => {
     clearNodeHover();
   } else {
     const id = data >> 16;
+    const name = nodeNames.get(id);
     const layer = (data >> 8) & 0xff;
     const state = data & 0xff;
-    setNode({ id, layer, state });
+    setNode({ id, name, layer, state });
 
-    updateNodeHover(id);
+    setNodeHoverData(id);
   }
-  updateNodeData();
+  sendNodeHover();
+  await fetchNodeData();
   draw();
 });
 

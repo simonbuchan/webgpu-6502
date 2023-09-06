@@ -1,9 +1,10 @@
 import { createMemo } from "solid-js";
 
 import * as pads from "../6502/pads";
-import { nodeDataSignal, updateNodeData } from "./state";
-import { nodeIsHigh, pullNode } from "../env";
+import { nodeDataSignal } from "./state";
+import { nodeIsHigh, setInput } from "../env";
 import { draw } from "../gpu/draw";
+import { sendInput } from "../actions";
 
 export default function Pad(props: { name: keyof typeof pads }) {
   const checked = createMemo(() => {
@@ -18,9 +19,8 @@ export default function Pad(props: { name: keyof typeof pads }) {
         class="h-4 w-4"
         checked={checked()}
         onChange={async (event) => {
-          pullNode(pads[props.name] as number, event.target.checked);
-          // await updateUntilStable();
-          updateNodeData();
+          setInput(pads[props.name] as number, event.target.checked);
+          sendInput();
           draw();
         }}
       />

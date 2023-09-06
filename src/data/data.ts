@@ -1,11 +1,19 @@
 import * as Data from "./load";
 
 export const data = await Data.load();
+export const nameNodes = new Map<string, number>(
+  Object.entries(await (await fetch("names.json")).json()),
+);
+export const nodeNames = new Map(
+  Array.from(nameNodes.entries(), ([k, v]) => [v, k]),
+);
 
-export const nodeData = new Uint32Array(data.simulation.nodes);
+export const nodeInputData = new Uint32Array(data.simulation.nodes);
 const transistorsData = new Uint32Array(data.simulation.transistors);
 
-export const nodeCount = nodeData.length;
+export const nodeData = nodeInputData.slice();
+
+export const nodeCount = nodeInputData.length;
 export const transistorCount = transistorsData.length / 2;
 
 console.log("%s nodes", nodeCount);
@@ -16,23 +24,17 @@ console.log("%s transistors", transistorCount);
 export const LO = 1;
 export const HI = 2;
 
-// directly connected to ground or power
-export const PULL_LO = 4;
-export const PULL_HI = 8;
-
-// input nodes are not cleared on update
-export const INPUT = 16;
 export const CHANGED = 32;
 export const HOVER_GATE = 64;
 export const HOVER_C1C2 = 128;
 
 export function clearNodeHover() {
   for (let i = 0; i < nodeCount; i++) {
-    nodeData[i] &= ~(HOVER_GATE | HOVER_C1C2);
+    nodeInputData[i] &= ~(HOVER_GATE | HOVER_C1C2);
   }
 }
 
-export function updateNodeHover(node: number) {
+export function setNodeHoverData(node: number) {
   clearNodeHover();
 
   for (let i = 0; i < transistorCount; i++) {
@@ -43,11 +45,11 @@ export function updateNodeHover(node: number) {
 
     // const on = (nodeData[gate] & HI) !== 0;
     if (node == gate) {
-      nodeData[c1] |= HOVER_GATE;
-      nodeData[c2] |= HOVER_GATE;
+      nodeInputData[c1] |= HOVER_GATE;
+      nodeInputData[c2] |= HOVER_GATE;
     }
     if (node == c1 || node == c2) {
-      nodeData[gate] |= HOVER_C1C2;
+      nodeInputData[gate] |= HOVER_C1C2;
     }
   }
 }

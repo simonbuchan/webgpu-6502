@@ -11,19 +11,19 @@ struct Transistor {
 const LO = 1u;
 const HI = 2u;
 
-// directly connected to power or ground
-const PULL_LO = 4u;
-const PULL_HI = 8u;
+// States from before the last input
+const LAST_LO = 4u;
+const LAST_HI = 8u;
 
-// not cleared by cs_weaken
-const INPUT = 16u;
 const CHANGED = 32u;
 const NODE_GATE = 64u;
 const NODE_C1C2 = 128u;
 
 @group(0) @binding(0)
-var<storage, read_write> s_nodes: array<atomic<u32>>;
+var<storage> s_node_inputs: array<u32>;
 @group(0) @binding(1)
+var<storage, read_write> s_nodes: array<atomic<u32>>;
+@group(0) @binding(2)
 var<storage> s_transistors: array<Transistor>;
 
 const LAYER_COLORS = array<vec4f, 6>(
@@ -88,7 +88,7 @@ fn fs_poly(in: VertexOutput) -> FragmentOutput {
 
     let layer_color = LAYER_COLORS[in.layer];
 
-    let state_color = STATE_COLORS[(state & 3) | ((state >> 2) & 3) | highlight];
+    let state_color = STATE_COLORS[(state & 3) | highlight];
 
     let hover_color = HOVER_COLORS[state >> 6];
 
@@ -103,20 +103,30 @@ fn fs_poly(in: VertexOutput) -> FragmentOutput {
 }
 
 @compute @workgroup_size(256, 1, 1)
-fn cs_weaken(
+fn cs_hover_update(
     @builtin(global_invocation_id)
     gid: vec3u,
 ) {
     let node_index = gid.x;
+    let input = s_node_inputs[node_index] & (NODE_GATE | NODE_C1C2);
+    atomicAnd(&s_nodes[node_index], ~(NODE_GATE | NODE_C1C2));
+    atomicOr(&s_nodes[node_index], input);
+}
+
+@compute @workgroup_size(256, 1, 1)
+fn cs_input(
+    @builtin(global_invocation_id)
+    gid: vec3u,
+) {
+    let node_index = gid.x;
+    let input = s_node_inputs[node_index] & 3;
     let node = &s_nodes[node_index];
-    let state = atomicLoad(node);
-    let input = state & INPUT;
-    let pull_strong = (state >> 2) & 3;
-    let pull_weak = state & 3;
-    let pull_new = select(pull_weak, pull_strong, pull_strong != 0);
-    let update = pull_new | select(0, pull_strong << 2, input != 0) | input;
-    // note, clears CHANGED
-    atomicStore(node, update);
+    if (input != 0) {
+        atomicStore(node, input);
+    } else {
+        // LO|HI => LAST_LO|HI
+        atomicStore(node, (atomicLoad(node) & 3) << 2);
+    }
 }
 
 @compute @workgroup_size(256, 1, 1)
@@ -140,34 +150,25 @@ fn cs_update(
 }
 
 fn propagate_transistor(gate: u32, c1i: u32, c2i: u32) {
-    // check for a weak or strong pull high
-    let on = (atomicLoad(&s_nodes[gate]) & (HI | PULL_HI)) != 0;
-    if (!on) {
+    let gate_state = atomicLoad(&s_nodes[gate]);
+    // use last input's value if we don't have a current value
+    let gate_last = (gate_state >> 2) & 3;
+    let gate_this = gate_state & 3;
+    let gate_value = select(gate_this, gate_last, gate_this == 0);
+    if ((gate_value & HI) == 0) {
         return;
     }
-    let c1 = &s_nodes[c1i];
-    let c2 = &s_nodes[c2i];
 
    // if the gate is on, then the source is connected to the drain
    // and the circut is closed. I think in theory the source to gate
    // should act as a diode, but I can't find good information about
    // this, and the JS behavior didn't depend on it.
+   let c1 = &s_nodes[c1i];
+   let c2 = &s_nodes[c2i];
 
-   let v1 = atomicLoad(c1);
-   let v2 = atomicLoad(c2);
+   let v1 = atomicLoad(c1) & 3;
+   let v2 = atomicLoad(c2) & 3;
 
-   // get combined weak and strong pulls
-   let old_pull = (v1 | v2) & 0xF;
-
-   // if there's a strong pull (a connection to an external pin),
-   // then override the weak pull
-   let strong_pull = old_pull >> 2;
-   let new_pull = select(
-     old_pull,
-     (strong_pull << 2) | strong_pull,
-     strong_pull != 0);
-   let changed = select(0, CHANGED, new_pull != old_pull);
-
-   atomicOr(c1, new_pull | changed);
-   atomicOr(c2, new_pull | changed);
+   atomicOr(c1, v2);
+   atomicOr(c2, v1);
 }
